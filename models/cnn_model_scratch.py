@@ -189,7 +189,6 @@ class MaxPool():
                         # Przypisz gradient tylko do pozycji maksymalnej wartości
                         dx[n, c, h:h + pool_height, w:w + pool_width] += mask * dout[n, c, h_out, w_out]
 
-
         return dx
 
 
@@ -239,31 +238,10 @@ class ThreeLayerConvNet():
         self.params["b2"] = torch.normal(0.0, weight_scale, size=(hidden_dim, ), dtype=dtype, device=device)
         self.params["W3"] = torch.normal(0.0, weight_scale, size=(hidden_dim, num_classes), dtype=dtype, device=device)
         self.params["b3"] = torch.normal(0.0, weight_scale, size=(num_classes,), dtype=dtype, device=device)
-        ######################################################################
-        #                            END OF YOUR CODE                        #
-        ######################################################################
 
-    def save(self, path):
-        checkpoint = {
-          'reg': self.reg,
-          'dtype': self.dtype,
-          'params': self.params,
-        }
-        torch.save(checkpoint, path)
-        print("Saved in {}".format(path))
-
-    def load(self, path):
-        checkpoint = torch.load(path, map_location='cpu')
-        self.params = checkpoint['params']
-        self.dtype = checkpoint['dtype']
-        self.reg = checkpoint['reg']
-        print("load checkpoint file: {}".format(path))
 
     def loss(self, X, y=None):
-        """
-        Evaluate loss and gradient for the three-layer convolutional network.
-        Input / output: Same API as TwoLayerNet.
-        """
+
         X = X.to(self.dtype)
         W1, b1 = self.params['W1'], self.params['b1']
         W2, b2 = self.params['W2'], self.params['b2']
@@ -281,15 +259,12 @@ class ThreeLayerConvNet():
         h1, h1_cache = ReLU.forward(z1)
         scores, z2_cache = Linear.forward(h1, self.params["W3"], self.params["b3"])
 
-
         if y is None:
             return scores
 
         loss, grads = 0.0, {}
 
-
-
-        loss, dloss = nn.y(scores, y)
+        loss, dloss = softmax_loss(scores, y)
         l2_reg = self.reg * (torch.sum(self.params["W1"]**2) + torch.sum(self.params["W2"]**2) + torch.sum(self.params["W3"]**2))
         loss += l2_reg
 
@@ -308,7 +283,6 @@ class ThreeLayerConvNet():
         grads["W2"] = dW2
         grads["b2"] = db2
 
-        # ważne ponieważ dz1 będzie flatten ale my potrzebujemy nie spłaszoną
         N, C, H, W = out_con1.shape
         dz1 = dz1.view(N, C, H, W)
 
@@ -317,9 +291,7 @@ class ThreeLayerConvNet():
         dW1 += self.reg * 2 * self.params["W1"]
         grads["W1"] = dW1
         grads["b1"] = db1
-        ###################################################################
-        #                             END OF YOUR CODE                    #
-        ###################################################################
+
 
         return loss, grads
 
@@ -392,20 +364,8 @@ class DeepConvNet():
         self.reg = reg
         self.dtype = dtype
 
-
         if device == 'cuda':
             device = 'cuda:0'
-
-        #####################################################################
-        #  Initialize the parameters for the DeepConvNet. All weights, #
-        # biases, and batchnorm scale and shift parameters should be        #
-        # stored in the dictionary self.params.                             #
-        #                                                                   #
-        # Weights for conv and fully-connected layers should be initialized #
-        # according to weight_scale. Biases should be initialized to zero.  #
-        # Batchnorm scale (gamma) and shift (beta) parameters should be     #
-        # initilized to ones and zeros respectively.                        #
-        #####################################################################
 
         filter_size = 3
         depth_input = input_dims[0]
@@ -434,85 +394,14 @@ class DeepConvNet():
             self.params["W" + str(self.num_layers)] = torch.normal(0.0, weight_scale, size=(final_conv_size, num_classes), dtype=dtype, device=device)
             self.params[f"b{self.num_layers}"] = torch.zeros(num_classes, dtype=dtype, device=device)
 
-        self.bn_params = []
-        if self.batchnorm:
-            self.bn_params = [{'mode': 'train'}
-                              for _ in range(len(num_filters))]
-
-        # Check that we got the right number of parameters
-        if not self.batchnorm:
-            params_per_macro_layer = 2  # weight and bias
-        else:
-            params_per_macro_layer = 4  # weight, bias, scale, shift
-        num_params = params_per_macro_layer * len(num_filters) + 2
-        msg = 'self.params has the wrong number of ' \
-              'elements. Got %d; expected %d'
-        msg = msg % (len(self.params), num_params)
-        assert len(self.params) == num_params, msg
-
-        # Check that all parameters have the correct device and dtype:
-        for k, param in self.params.items():
-            msg = 'param "%s" has device %r; should be %r' \
-                  % (k, param.device, device)
-            assert param.device == torch.device(device), msg
-            msg = 'param "%s" has dtype %r; should be %r' \
-                  % (k, param.dtype, dtype)
-            assert param.dtype == dtype, msg
-
-    def save(self, path):
-        checkpoint = {
-          'reg': self.reg,
-          'dtype': self.dtype,
-          'params': self.params,
-          'num_layers': self.num_layers,
-          'max_pools': self.max_pools,
-          'batchnorm': self.batchnorm,
-          'bn_params': self.bn_params,
-        }
-        torch.save(checkpoint, path)
-        print("Saved in {}".format(path))
-
-    def load(self, path, dtype, device):
-        checkpoint = torch.load(path, map_location='cpu')
-        self.params = checkpoint['params']
-        self.dtype = dtype
-        self.reg = checkpoint['reg']
-        self.num_layers = checkpoint['num_layers']
-        self.max_pools = checkpoint['max_pools']
-        self.batchnorm = checkpoint['batchnorm']
-        self.bn_params = checkpoint['bn_params']
-
-        for p in self.params:
-            self.params[p] = \
-                self.params[p].type(dtype).to(device)
-
-        for i in range(len(self.bn_params)):
-            for p in ["running_mean", "running_var"]:
-                self.bn_params[i][p] = \
-                    self.bn_params[i][p].type(dtype).to(device)
-
-        print("load checkpoint file: {}".format(path))
 
     def loss(self, X, y=None):
-        """
-        Evaluate loss and gradient for the deep convolutional
-        network.
-        Input / output: Same API as ThreeLayerConvNet.
-        """
         X = X.to(self.dtype)
         mode = 'test' if y is None else 'train'
-
-        # pass conv_param to the forward pass for the
-        # convolutional layer
-        # Padding and stride chosen to preserve the input
-        # spatial size
         filter_size = 3
         conv_param = {'stride': 1, 'pad': (filter_size - 1) // 2}
-
-        # pass pool_param to the forward pass for the max-pooling layer
         pool_param = {'pool_height': 2, 'pool_width': 2, 'stride': 2}
-        gamma = 0
-        beta = 1
+
 
         scores = None
 
@@ -532,12 +421,9 @@ class DeepConvNet():
 
                 out_con["C" + str(l)], cache_out_con["C" + str(l)] = Conv_ReLU.forward(out_con["C" + str(l-1)], self.params['W' + str(l)],
                                                                                         self.params['b' + str(l)], conv_param)
-
-
         N = X.shape[0] # n przykładów
         flatten_con = torch.flatten(out_con["C" + str(self.num_layers-1)]).view(N, -1)
         scores, z_cache = Linear.forward(flatten_con, self.params['W' + str(self.num_layers)], self.params['b' + str(self.num_layers)])
-
 
         if y is None:
             return scores
@@ -596,8 +482,8 @@ def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu', dtype=torch.
     Implement Kaiming initialization for linear and convolution layers.
 
     Inputs:
-    - Din, Dout: Integers giving the number of input and output dimensions
-      for this layer
+    - Din (int): Number of input dimensions
+    - Dout (int): Number of output dimensions
     - K: If K is None, then initialize weights for a linear layer with
       Din input dimensions and Dout output dimensions. Otherwise if K is
       a nonnegative integer then initialize the weights for a convolution
@@ -609,41 +495,20 @@ def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu', dtype=torch.
     - device, dtype: The device and datatype for the output tensor.
 
     Returns:
-    - weight: A torch Tensor giving initialized weights for this layer.
-      For a linear layer it should have shape (Din, Dout); for a
-      convolution layer it should have shape (Dout, Din, K, K).
+    - weight:
+      linear layer (Din, Dout);
+      convolution layer (Dout, Din, K, K).
     """
     gain = 2. if relu else 1.
     weight = None
-    if K is None:
-        ###################################################################
-        #  Implement Kaiming initialization for linear layer.        #
-        # The weight scale is sqrt(gain / fan_in),                        #
-        # where gain is 2 if ReLU is followed by the layer, or 1 if not,  #
-        # and fan_in = num_in_channels (= Din).  3                          #
-        # The output should be a tensor in the designated size, dtype,    #
-        # and device.                                                     #
-        ###################################################################
+    if K is None: # for linear layer
         kaiming = torch.sqrt(torch.as_tensor(gain / Din, device=device, dtype=dtype))
         weight = torch.normal(0, kaiming, size=(Din, Dout), device=device, dtype=dtype)
-        ###################################################################
-        #                            END OF YOUR CODE                     #
-        ###################################################################
-    else:
-        ###################################################################
-        #  Implement Kaiming initialization for convolutional layer. #
-        # The weight scale is sqrt(gain / fan_in),                        #
-        # where gain is 2 if ReLU is followed by the layer, or 1 if not,  #
-        # and fan_in = num_in_channels (= Din) * K * K                    #
-        # The output should be a tensor in the designated size, dtype,    #
-        # and device.                                                     #
-        ###################################################################
+
+    else: # for conv leyer
         fan_in = Din * K * K
         kaiming = torch.sqrt(torch.as_tensor(gain / fan_in, device=device, dtype=dtype))
         weight = torch.normal(0, kaiming, size=(Dout, Din, K, K), device=device, dtype=dtype)
-        ###################################################################
-        #                         END OF YOUR CODE                        #
-        ###################################################################
     return weight
 
 
@@ -652,53 +517,21 @@ class Linear():
     @staticmethod
     def forward(x, w, b):
         """
-        Computes the forward pass for an linear (fully-connected) layer.
-        The input x has shape (N, d_1, ..., d_k) and contains a minibatch of N
-        examples, where each example x[i] has shape (d_1, ..., d_k). We will
-        reshape each input into a vector of dimension D = d_1 * ... * d_k, and
-        then transform it to an output vector of dimension M.
         Inputs:
-        - x: A tensor containing input data, of shape (N, d_1, ..., d_k)
-        - w: A tensor of weights, of shape (D, M)
+        - x: A tensor containing input data, of shape (N, d_1, ..., d_k) like (32, 3, 28, 28)
+        - w: A tensor of weights, of shape (D, M), where D is d_1 * ... * d_k
         - b: A tensor of biases, of shape (M,)
         Returns a tuple of:
         - out: output, of shape (N, M)
         - cache: (x, w, b)
-
-        Gdy znasz wszystkie inne wymiary oprócz jednego.
-Gdy chcesz uprościć kod i nie obliczać wymiarów ręcznie.
-# Błąd: próba zmiany na niezgodny kształt
-x_invalid = x.view(3, -1)  # N=3, ale liczba elementów (24) nie dzieli się przez 3
-x = torch.randn(4, 3, 2, 5)
-
-# Całkowita liczba elementów: 4 * 3 * 2 * 5 = 120
-print(x.numel())  # 120
-
-# Zmiana kształtu na (4, -1), PyTorch obliczy brakujący wymiar jako 30
-x_reshaped = x.view(4, -1)
-print(x_reshaped.shape)  # (4, 30)
-
-czyli on tam wylicza po prostu tym -1 brakujących
-
         """
-        out = None
-
-        ######################################################################
-        # Implement the linear forward pass. Store the result in out.  #
-        # You will need to reshape the input into rows.                      #
-        ######################################################################
         out = torch.matmul(x.reshape(x.shape[0], -1), w) + b
-        ######################################################################
-        #                        END OF YOUR CODE                            #
-        ######################################################################
         cache = (x, w, b)
         return out, cache
 
     @staticmethod
     def backward(dout, cache):
         """
-        Computes the backward pass for an linear layer.
-        Inputs:
         - dout: Upstream derivative, of shape (N, M)
         - cache: Tuple of:
           - x: Input data, of shape (N, d_1, ... d_k)
@@ -709,20 +542,11 @@ czyli on tam wylicza po prostu tym -1 brakujących
           (N, d1, ..., d_k)
         - dw: Gradient with respect to w, of shape (D, M)
         - db: Gradient with respect to b, of shape (M,)
-
-
         """
         x, w, b = cache
-        dx, dw, db = None, None, None
-        ##################################################
-        # Implement the linear backward pass.      #
-        ##################################################
         dx = torch.matmul(dout, w.T).reshape(x.shape)
         dw = torch.matmul(x.reshape(x.shape[0], -1).T, dout)
         db = torch.sum(dout, dim=0)
-        ##################################################
-        #                END OF YOUR CODE                #
-        ##################################################
         return dx, dw, db
 
 
@@ -731,27 +555,21 @@ class ReLU():
     @staticmethod
     def forward(x):
         """
-        Computes the forward pass for a layer of rectified
-        linear units (ReLUs).
         Input:
         - x: Input; a tensor of any shape
         Returns a tuple of:
         - out: Output, a tensor of the same shape as x
         - cache: x
         """
-
         x_relu = x.clone()
         x_relu[x <= 0] = 0
         out = x_relu
-
         cache = x
         return out, cache
 
     @staticmethod
     def backward(dout, cache):
         """
-        Computes the backward pass for a layer of rectified
-        linear units (ReLUs).
         Input:
         - dout: Upstream derivatives, of any shape
         - cache: Input x, of same shape as dout
@@ -766,12 +584,20 @@ class ReLU():
         return dx
 
 def softmax_loss(X, y):
+    '''
+    Computes the softmax loss (cross-entropy) and its gradient.
+    Input:
+        - X: Unnormalized scores/logits of shape (N, C), where N is the number of samples and C is the number of classes.
+        - y: True class labels, a 1D tensor of length N.
+    Return:
+        - loss: Average cross-entropy loss.
+        - dloss: Gradient of the loss with respect to input logits X.
+    '''
     exp_scores = torch.exp(X - torch.max(X, dim=1, keepdim=True)[0])
     probs = exp_scores / torch.sum(exp_scores, dim=1, keepdim=True)
 
     N = X.shape[0]
-    eps = 1e-15  # mała wartość aby uniknąć log(0)
-    #  clipping wartości prawdopodobieństw
+    eps = 1e-15
     y_pred = torch.clamp(y, eps, 1.0)
     correct_class_probs = y_pred[y, range(N)]
     loss = -torch.sum(torch.log(correct_class_probs)) / N
