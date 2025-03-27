@@ -1,41 +1,27 @@
 import torch
 import torch.nn as nn
 
-
-
-class Conv(object):
+class Conv():
 
     @staticmethod
     def forward(x, w, b, conv_param):
         """
-        A naive implementation of the forward pass for a convolutional layer.
-        The input consists of N data points, each with C channels, height H and
-        width W. We convolve each input with F different filters, where each
-        filter spans all C channels and has height HH and width WW
-
-        C chanels to głębokość czyli Cin
-        F ilość filtry
-        w.C to ta głębokość
+        Simple impelentaction of the forward of conv
 
         Input:
         - x: Input data of shape (N, C, H, W)
         - w: Filter weights of shape (F, C, HH, WW)
-        - b: Biases, of shape (F,) F ilość filtry
+        - b: Biases, of shape (F,)
         - conv_param: A dictionary with the following keys:
           - 'stride': The number of pixels between adjacent receptive fields
             in the horizontal and vertical directions.
           - 'pad': The number of pixels that is used to zero-pad the input.
-
-        During padding, 'pad' zeros should be placed symmetrically (i.e equally
-        on both sides) along the height and width axes of the input. Be careful
-        not to modfiy the original input x directly.
 
         Returns a tuple of:
         - out: Output data of shape (N, F, H', W') where H' and W' are given by
           H' = 1 + (H + 2 * pad - HH) / stride
           W' = 1 + (W + 2 * pad - WW) / stride
         - cache: (x, w, b, conv_param)
-        ważne te F to ilość filtrów więc muszę się skupić aby
         """
         N, C, H, W = x.shape
         F, C, HH, WW = w.shape
@@ -123,7 +109,7 @@ class Conv(object):
         return dx, dw, db
 
 
-class MaxPool(object):
+class MaxPool():
 
     @staticmethod
     def forward(x, pool_param):
@@ -207,7 +193,7 @@ class MaxPool(object):
         return dx
 
 
-class ThreeLayerConvNet(object):
+class ThreeLayerConvNet():
     """
     A three-layer convolutional network with the following architecture:
     conv - relu - 2x2 max pool - linear - relu - linear - softmax
@@ -338,7 +324,7 @@ class ThreeLayerConvNet(object):
         return loss, grads
 
 
-class DeepConvNet(object):
+class DeepConvNet():
     """
     A convolutional neural network with an arbitrary number of convolutional
     layers in VGG-Net style. All convolution layers will use kernel size 3 and
@@ -448,16 +434,6 @@ class DeepConvNet(object):
             self.params["W" + str(self.num_layers)] = torch.normal(0.0, weight_scale, size=(final_conv_size, num_classes), dtype=dtype, device=device)
             self.params[f"b{self.num_layers}"] = torch.zeros(num_classes, dtype=dtype, device=device)
 
-        ################################################################
-        #                      END OF YOUR CODE                        #
-        ################################################################
-
-        # With batch normalization we need to keep track of running
-        # means and variances, so we need to pass a special bn_param
-        # object to each batch normalization layer. You should pass
-        # self.bn_params[0] to the forward pass of the first batch
-        # normalization layer, self.bn_params[1] to the forward
-        # pass of the second batch normalization layer, etc.
         self.bn_params = []
         if self.batchnorm:
             self.bn_params = [{'mode': 'train'}
@@ -526,13 +502,6 @@ class DeepConvNet(object):
         X = X.to(self.dtype)
         mode = 'test' if y is None else 'train'
 
-        # Set train/test mode for batchnorm params since they
-        # behave differently during training and testing.
-        if self.batchnorm:
-            for bn_param in self.bn_params:
-                bn_param['mode'] = mode
-        scores = None
-
         # pass conv_param to the forward pass for the
         # convolutional layer
         # Padding and stride chosen to preserve the input
@@ -546,18 +515,7 @@ class DeepConvNet(object):
         beta = 1
 
         scores = None
-        #########################################################
-        #  Implement the forward pass for the DeepConvNet, #
-        # computing the class scores for X and storing them in  #
-        # the scores variable.                                  #
-        #                                                       #
-        # You should use the fast versions of convolution and   #
-        # max pooling layers, or the convolutional sandwich     #
-        # layers, to simplify your implementation.              #
-        #########################################################
 
-        # Concretely, when the batchnorm flag is set to True in the constructor, you should insert a batch normalization layer before each ReLU nonlinearity.
-        # The outputs from the last linear layer of the network should not be normalized. Once you are done, run the following to gradient-check your implementation.
         out_con = {}
         cache_out_con = {}
 
@@ -579,35 +537,23 @@ class DeepConvNet(object):
         N = X.shape[0] # n przykładów
         flatten_con = torch.flatten(out_con["C" + str(self.num_layers-1)]).view(N, -1)
         scores, z_cache = Linear.forward(flatten_con, self.params['W' + str(self.num_layers)], self.params['b' + str(self.num_layers)])
-        #####################################################
-        #                 END OF YOUR CODE                  #
-        #####################################################
+
 
         if y is None:
             return scores
 
         loss, grads = 0, {}
-        ###################################################################
-        #  Implement the backward pass for the DeepConvNet,          #
-        # storing the loss and gradients in the loss and grads variables. #
-        # Compute data loss using softmax, and make sure that grads[k]    #
-        # holds the gradients for self.params[k]. Don't forget to add     #
-        # L2 regularization!                                              #
-        #                                                                 #
-        # NOTE: To ensure that your implementation matches ours and you   #
-        # pass the automated tests, make sure that your L2 regularization #
-        # does not include a factor of 0.5                                #
-        ###################################################################
+
         loss, dloss = softmax_loss(scores, y)
         l2_reg = sum(torch.sum(self.params[f"W{i}"] ** 2) for i in range(1, self.num_layers + 1))
         loss += self.reg * l2_reg
 
-        # Backpropagate through the final fully connected layer
+        # Backpropagate  fully connected layer
         dprev, dW, db = Linear.backward(dloss, z_cache)
         grads[f"W{self.num_layers}"] = dW + self.reg * 2 * self.params[f"W{self.num_layers}"]
         grads[f"b{self.num_layers}"] = db  # Bias gradients do NOT include regularization
 
-        # Backpropagate through convolutional layers
+        # Backpropagate  convolutional layers
         N, C, H, W = out_con[f"C{self.num_layers-1}"].shape
         dprev = dprev.view(N, C, H, W)
         for l in range(self.num_layers - 1, 0, -1):
@@ -628,17 +574,7 @@ class DeepConvNet(object):
 
 
 def create_convolutional_solver_instance(data_dict, dtype, device):
-    model = None
-    solver = None
-    #########################################################
-    #  Train the best DeepConvNet that you can on      #
-    # CIFAR-10 within 60 seconds.
-    # Hint: Your model does not have to be too deep.
-    #
-    # Hint 2: We used batch_size = 128 for training a model with 74% validation accuracy. You don't have to follow this, but it would save your time for hyperparameter search.
-    #
-    # Hint 3: Note that we import all the functions from fully_connected_networks, so feel free to use the optimizers you've already imolemented; e.g., adam#
-    #########################################################
+
     input_dims = data_dict['X_train'].shape[1:]
     weight_scale = 'kaiming'
 
@@ -651,17 +587,8 @@ def create_convolutional_solver_instance(data_dict, dtype, device):
                         device=device
                         )
 
-    solver = Solver(model, data_dict,
-                    num_epochs=10, batch_size=128,
-                    update_rule=adam,
-                    optim_config={
-                        'learning_rate': 0.003,
-                    },
-                    print_every=20, device=device)
-    #########################################################
-    #                  END OF YOUR CODE                     #
-    #########################################################
-    return solver
+
+    return model
 
 
 def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu', dtype=torch.float32):
@@ -720,7 +647,7 @@ def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu', dtype=torch.
     return weight
 
 
-class Linear(object):
+class Linear():
 
     @staticmethod
     def forward(x, w, b):
@@ -799,7 +726,7 @@ czyli on tam wylicza po prostu tym -1 brakujących
         return dx, dw, db
 
 
-class ReLU(object):
+class ReLU():
 
     @staticmethod
     def forward(x):
@@ -853,4 +780,36 @@ def softmax_loss(X, y):
     dloss /= N
     return loss, dloss
 
-def Conv_ReLU_Pool(x, w, b, conv_param, pool_param):
+
+class Conv_ReLU():
+
+    @staticmethod
+    def forward(x, w, b, conv_param):
+        z, conv_cache = Conv.forward(x=x, w=w, b=b, conv_param=conv_param)
+        z_relu, relu_cache = ReLU.forward(x=z)
+        caches = (conv_cache, relu_cache)
+        return z_relu, caches
+
+    @staticmethod
+    def backward(dz_relu, caches):
+        conv_cache, relu_cache = caches
+        dz = ReLU.backward(dz_relu, relu_cache)
+        dx, dw, db = Conv.backward(dz, conv_cache)
+        return dx, dw, db
+
+class Conv_ReLU_Pool():
+    @staticmethod
+    def forward(x, w, b, conv_param, pool_param):
+        z, conv_cache = Conv.forward(x=x, w=w, b=b, conv_param=conv_param)
+        z_relu, relu_cache = ReLU.forward(z)
+        z_pool, pool_cache = MaxPool.forward(x=z_relu, pool_param=pool_param)
+        caches = (conv_cache, relu_cache, pool_cache)
+        return z_pool, caches
+
+    @staticmethod
+    def backward(dz_relu, caches):
+        conv_cache, relu_cache, pool_cache = caches
+        dz_pool = MaxPool.backward(dz_relu, pool_cache)
+        dz = ReLU.backward(dz_pool, relu_cache)
+        dx, dw, db = Conv.backward(dz, conv_cache)
+        return dx, dw, db
