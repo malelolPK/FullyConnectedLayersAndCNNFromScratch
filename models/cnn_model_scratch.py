@@ -296,7 +296,7 @@ class ThreeLayerConvNet():
         return loss, grads
 
 
-class DeepConvNet():
+class DeepConvNet(nn.Module):
     """
     A convolutional neural network with an arbitrary number of convolutional
     layers in VGG-Net style. All convolution layers will use kernel size 3 and
@@ -310,14 +310,6 @@ class DeepConvNet():
     pooling: max 2x2
     stride: S = 2
 
-    The network will have the following architecture:
-
-    {conv - [batchnorm?] - relu - [pool?]} x (L - 1) - linear
-
-    Each {...} structure is a "macro layer" consisting of a convolution layer,
-    an optional batch normalization layer, a ReLU nonlinearity, and an optional
-    pooling layer. After L-1 such macro layers, a single fully-connected layer
-    is used to predict the class scores.
 
     The network operates on minibatches of data that have shape (N, C, H, W)
     consisting of N images, each with height H and width W and with C input
@@ -327,13 +319,13 @@ class DeepConvNet():
                  input_dims=(3, 32, 32),
                  num_filters=[8, 8, 8, 8, 8],
                  max_pools=[0, 1, 2, 3, 4],
-                 batchnorm=False,
                  num_classes=10,
                  weight_scale=1e-3,
                  reg=0.0,
                  weight_initializer=None,
                  dtype=torch.float,
                  device='cpu'):
+        super().__init__()
         """
         Initialize a new network.
 
@@ -360,7 +352,6 @@ class DeepConvNet():
         self.params = {}
         self.num_layers = len(num_filters)+1
         self.max_pools = max_pools
-        self.batchnorm = batchnorm
         self.reg = reg
         self.dtype = dtype
 
@@ -371,29 +362,29 @@ class DeepConvNet():
         depth_input = input_dims[0]
         H, W = input_dims[1], input_dims[2]
         for l in range(0, self.num_layers-1):
-            if self.batchnorm:
-                self.params['gamma{}'.format(l)] = 0.01 * torch.randn(num_filters[l], device=device, dtype=dtype)
-                self.params['beta{}'.format(l)] = 0.01 * torch.randn(num_filters[l], device=device, dtype=dtype)
             if weight_scale == 'kaiming':
-                self.params["W" + str(l + 1)] = kaiming_initializer(depth_input, num_filters[l], K = filter_size, dtype=dtype, device=device)
 
-                self.params[f"b{l + 1}"] = torch.zeros(num_filters[l], dtype=dtype, device=device)
+                self.params["W" + str(l + 1)] = nn.Parameter(kaiming_initializer(depth_input, num_filters[l], K = filter_size, dtype=dtype, device=device))
+
+                self.params[f"b{l + 1}"] = nn.Parameter(torch.zeros(num_filters[l], dtype=dtype, device=device))
             else:
-                self.params["W" + str(l + 1)] = torch.normal(0.0, weight_scale,
+                self.params["W" + str(l + 1)] = nn.Parameter(torch.normal(0.0, weight_scale,
                                                  size=(num_filters[l], depth_input, filter_size, filter_size),
                                                  dtype=dtype,
-                                                 device=device)
-                self.params[f"b{l+1}"] = torch.zeros(num_filters[l], dtype=dtype, device=device)
+                                                 device=device))
+                self.params[f"b{l+1}"] = nn.Parameter(torch.zeros(num_filters[l], dtype=dtype, device=device))
             depth_input = num_filters[l]
 
         final_conv_size = 128
         if weight_scale == 'kaiming':
-            self.params["W" + str(self.num_layers)] = kaiming_initializer(final_conv_size, num_classes, K=None, dtype=dtype, device=device)
-            self.params[f"b{self.num_layers}"] = torch.zeros(num_classes, dtype=dtype, device=device)
+            self.params["W" + str(self.num_layers)] = nn.Parameter(kaiming_initializer(final_conv_size, num_classes, K=None, dtype=dtype, device=device))
+            self.params[f"b{self.num_layers}"] = nn.Parameter(torch.zeros(num_classes, dtype=dtype, device=device))
         else:
-            self.params["W" + str(self.num_layers)] = torch.normal(0.0, weight_scale, size=(final_conv_size, num_classes), dtype=dtype, device=device)
-            self.params[f"b{self.num_layers}"] = torch.zeros(num_classes, dtype=dtype, device=device)
+            self.params["W" + str(self.num_layers)] = nn.Parameter(torch.normal(0.0, weight_scale, size=(final_conv_size, num_classes), dtype=dtype, device=device))
+            self.params[f"b{self.num_layers}"] = nn.Parameter(torch.zeros(num_classes, dtype=dtype, device=device))
 
+    def parameters(self):
+        return self.params
 
     def loss(self, X, y=None):
         X = X.to(self.dtype)
@@ -456,25 +447,6 @@ class DeepConvNet():
         #############################################################
 
         return loss, grads
-
-
-
-def create_convolutional_solver_instance(data_dict, dtype, device):
-
-    input_dims = data_dict['X_train'].shape[1:]
-    weight_scale = 'kaiming'
-
-    model = DeepConvNet(input_dims=input_dims, num_classes=10,
-                        num_filters=([16] * 2) + ([64] * 2)+ ([126] * 2),
-                        max_pools=[2,4,6],
-                        weight_scale=weight_scale,
-                        reg=3e-5,
-                        dtype=dtype,
-                        device=device
-                        )
-
-
-    return model
 
 
 def kaiming_initializer(Din, Dout, K=None, relu=True, device='cpu', dtype=torch.float32):

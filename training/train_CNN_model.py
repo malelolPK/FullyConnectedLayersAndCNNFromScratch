@@ -1,6 +1,7 @@
 import torch
 from utils import data_loader
 from models import cnn_model
+from models import cnn_model_scratch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
@@ -16,14 +17,22 @@ learning_rate_SGD = 0.1
 momentum = 0.9
 weight_decay = 3e-5 # L2 w pytorch
 num_filters = [16, 32]
+max_pools = [0,1]
 hidden = 50
-num_epoch = 100
+num_epoch = 1
 
-model = cnn_model.conv_net(num_filters = num_filters, hidden = hidden).to(device)
-
+#model = cnn_model.conv_net(num_filters = num_filters, hidden = hidden).to(device)
+model = cnn_model_scratch.DeepConvNet(input_dims=(1, 28, 28),
+                                      num_filters=num_filters,
+                                      max_pools=max_pools,
+                                      num_classes=10,
+                                      weight_scale="kaiming",
+                                      dtype=torch.float,
+                                      device=device).to(device) # nie odpalać tego
 loss_function = nn.CrossEntropyLoss()
+param_keys_model = [param for param in model.parameters()]
 #optimizer_SGD = torch.optim.SGD(model.parameters(), lr=learning_rate_SGD, momentum=momentum, weight_decay = weight_decay)
-optimizer_ADAM = torch.optim.Adam(model.parameters(), lr=learning_rate_adam, weight_decay=weight_decay)
+optimizer_ADAM = torch.optim.Adam([model.parameters()[key] for key in param_keys_model], lr=learning_rate_adam, weight_decay=weight_decay)
 train_loss = []
 train_prediction = []
 
@@ -41,11 +50,10 @@ for epoch in range(num_epoch):
 
     avg_test_loss = 0
     avg_test_accuracy = 0
-    model.train(True)
     for i, (images, y) in enumerate(train_loader):
         image = images.to(device)
         y_true = y.to(device)
-        y_pred = model.forward(image)
+        y_pred = model.loss(image, y_true)
         loss = loss_function(y_pred, y_true)
 
         #optimizer_SGD.zero_grad()
@@ -61,13 +69,12 @@ for epoch in range(num_epoch):
             avg_train_accuracy += accuracy
         #optimizer_ADAM.step()
 
-    model.eval()
     with torch.no_grad():
         for i, (images, y) in enumerate(val_loader):
             image = images.to(device)
             y_true = y.to(device)
 
-            y_pred = model.forward(image)
+            y_pred = model.loss(image)
             loss = loss_function(y_pred, y_true)
 
             avg_val_loss += loss
@@ -80,7 +87,7 @@ for epoch in range(num_epoch):
             image = images.to(device)
             y_true = y.to(device)
 
-            y_pred = model.forward(image)
+            y_pred = model.loss(image)
             loss = loss_function(y_pred, y_true)
 
             avg_test_loss += loss
