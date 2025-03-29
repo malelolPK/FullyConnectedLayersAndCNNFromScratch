@@ -100,8 +100,8 @@ class InteractivePaintingCanvas:
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    num_filters = [16, 32]
-    hidden = 50
+    num_filters = [64, 64]
+    hidden = 64
 
     model = cnn_model.conv_net(num_filters=num_filters, hidden=hidden).to(device)
     model.eval()

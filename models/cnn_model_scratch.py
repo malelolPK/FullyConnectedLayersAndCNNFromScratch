@@ -1,6 +1,11 @@
 import torch
 import torch.nn as nn
+# I have tested this with the Michigan Online course:
+# EECS 498.008 / 598.008 - Deep Learning for Computer Vision, Winter 2022.
+# So I know it works fine, but it's so unoptimized that you wouldn't want to run it.
 
+# IMPORTANT: The comments in """" are partially from the course,
+# but the actual code was written by me.
 class Conv():
 
     @staticmethod
@@ -97,11 +102,10 @@ class Conv():
                         w_start = j * stride
                         w_end = w_start + WW
 
-                        # Update dw - accumulate gradient for filter weights
                         x_window = x_padded[n, :, h_start:h_end, w_start:w_end]
                         dw[f] += x_window * dout[n, f, i, j]
 
-                        # Update dx - accumulate gradient for input
+
                         dx_padded[n, :, h_start:h_end, w_start:w_end] += w[f] * dout[n, f, i, j]
 
         dx = dx_padded[:, :, pad:pad+H, pad:pad+W]
@@ -443,8 +447,6 @@ class DeepConvNet(nn.Module):
             # Add L2 regularization to weight gradients
             grads[f"W{l}"] = dW + self.reg * 2 * self.params[f"W{l}"]
             grads[f"b{l}"] = db
-        #                       END OF YOUR CODE                    #
-        #############################################################
 
         return loss, grads
 

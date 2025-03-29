@@ -1,9 +1,12 @@
 import torch
 from utils import data_loader
 from models import cnn_model
+from utils import Early_stopper
 from models import cnn_model_scratch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -15,24 +18,28 @@ learning_rate_adam = 0.001
 
 learning_rate_SGD = 0.1
 momentum = 0.9
+GAMMA = 0.95
 weight_decay = 3e-5 # L2 w pytorch
-num_filters = [16, 32]
-max_pools = [0,1]
-hidden = 50
-num_epoch = 1
+num_filters = [64, 64]
+# max_pools = [0,1]
+hidden = 64
+num_epoch = 50
 
-#model = cnn_model.conv_net(num_filters = num_filters, hidden = hidden).to(device)
-model = cnn_model_scratch.DeepConvNet(input_dims=(1, 28, 28),
-                                      num_filters=num_filters,
-                                      max_pools=max_pools,
-                                      num_classes=10,
-                                      weight_scale="kaiming",
-                                      dtype=torch.float,
-                                      device=device).to(device) # nie odpalać tego
+model = cnn_model.conv_net(num_filters = num_filters, hidden = hidden).to(device)
+# model = cnn_model_scratch.DeepConvNet(input_dims=(1, 28, 28),
+#                                       num_filters=num_filters,
+#                                       max_pools=max_pools,
+#                                       num_classes=10,
+#                                       weight_scale="kaiming",
+#                                       dtype=torch.float,
+#                                       device=device).to(device) # DONT TRAIN CNN FROM SRATCH trust me you dont want XD
 loss_function = nn.CrossEntropyLoss()
-param_keys_model = [param for param in model.parameters()]
+# param_keys_model = [param for param in model.parameters()]
 #optimizer_SGD = torch.optim.SGD(model.parameters(), lr=learning_rate_SGD, momentum=momentum, weight_decay = weight_decay)
-optimizer_ADAM = torch.optim.Adam([model.parameters()[key] for key in param_keys_model], lr=learning_rate_adam, weight_decay=weight_decay)
+# optimizer_ADAM = torch.optim.Adam([model.parameters()[key] for key in param_keys_model], lr=learning_rate_adam, weight_decay=weight_decay)
+optimizer_ADAM = torch.optim.Adam(model.parameters(), lr=learning_rate_adam, weight_decay=weight_decay)
+scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer_ADAM, gamma = GAMMA)
+early_stopper = Early_stopper.EarlyStopper(patience=5)
 train_loss = []
 train_prediction = []
 
@@ -50,10 +57,12 @@ for epoch in range(num_epoch):
 
     avg_test_loss = 0
     avg_test_accuracy = 0
+    model.train()
     for i, (images, y) in enumerate(train_loader):
         image = images.to(device)
         y_true = y.to(device)
-        y_pred = model.loss(image, y_true)
+        #y_pred = model.loss(image, y_true)
+        y_pred = model.forward(image)
         loss = loss_function(y_pred, y_true)
 
         #optimizer_SGD.zero_grad()
@@ -68,13 +77,14 @@ for epoch in range(num_epoch):
             accuracy = torch.sum(prediction == y_true) / y_true.shape[0]
             avg_train_accuracy += accuracy
         #optimizer_ADAM.step()
-
+    model.eval()
     with torch.no_grad():
         for i, (images, y) in enumerate(val_loader):
             image = images.to(device)
             y_true = y.to(device)
 
-            y_pred = model.loss(image)
+            #y_pred = model.loss(image)
+            y_pred = model.forward(image)
             loss = loss_function(y_pred, y_true)
 
             avg_val_loss += loss
@@ -82,18 +92,21 @@ for epoch in range(num_epoch):
             accuracy = torch.sum(prediction == y_true) / y_true.shape[0]
             avg_val_accuracy += accuracy
 
+    model.eval()
     with torch.no_grad():
         for i, (images, y) in enumerate(test_loader):
             image = images.to(device)
             y_true = y.to(device)
 
-            y_pred = model.loss(image)
+            #y_pred = model.loss(image)
+            y_pred = model.forward(image)
             loss = loss_function(y_pred, y_true)
 
             avg_test_loss += loss
             prediction = torch.argmax(y_pred, dim=1)
             accuracy = torch.sum(prediction == y_true) / y_true.shape[0]
             avg_test_accuracy += accuracy
+    scheduler.step()
 
     avg_train_loss /= len(train_loader)
     train_loss.append(avg_train_loss)
@@ -114,6 +127,8 @@ for epoch in range(num_epoch):
     test_prediction.append(avg_test_accuracy)
 
     print(f"epoch {epoch}, train_loss {avg_train_loss:.4f}, train_accuracy {avg_train_accuracy:.4f}, val_loss {avg_val_loss:.4f}, val_accuracy {avg_val_accuracy:.4f}, TEST LOSS: {avg_test_loss}, TEST_ACCURACY: {avg_test_accuracy}")
+    if early_stopper.early_stop(avg_test_loss):
+        break
 
 train_prediction_tensor = torch.tensor(train_prediction).cpu().numpy()
 train_loss_tensor = torch.tensor(train_loss).cpu().numpy()
@@ -124,7 +139,7 @@ val_loss_tensor = torch.tensor(val_loss).cpu().numpy()
 test_prediction_tensor = torch.tensor(test_prediction).cpu().numpy()
 test_loss_tensor = torch.tensor(test_loss).cpu().numpy()
 
-#Conv_net.conv_net.save(model)
+#cnn_model.conv_net.save(model)
 
 # Wykres strat
 plt.figure(figsize=(10, 5))
