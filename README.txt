@@ -15,4 +15,4 @@ This project implements two different approaches to classifying handwritten digi
 - Python 3.x  
 - PyTorch  
 - NumPy  
-- Matplotlib  
+- Matplotlib  test
